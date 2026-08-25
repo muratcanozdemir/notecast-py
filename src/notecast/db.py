@@ -7,7 +7,6 @@ import os
 import sqlite3
 import uuid
 from dataclasses import dataclass, field
-from pathlib import Path
 from typing import Any
 
 DB_PATH_DEFAULT = "./notecast.db"
@@ -157,11 +156,24 @@ def get_note(conn: sqlite3.Connection, nid: str) -> Note | None:
     return Note.from_row(row) if row else None
 
 
+def _fts_escape(query: str) -> str:
+    """Turn free-text input into a literal FTS5 match expression.
+
+    User queries may contain FTS5 operators/syntax (colons, quotes,
+    AND/OR/NOT, unbalanced parens) that would otherwise raise a syntax
+    error from SQLite. Quoting each token neutralizes all of that.
+    """
+    tokens = query.split()
+    if not tokens:
+        return '""'
+    return " ".join('"' + t.replace('"', '""') + '"' for t in tokens)
+
+
 def search_notes(conn: sqlite3.Connection, query: str) -> list[Note]:
     rows = conn.execute(
         "SELECT n.* FROM notes n JOIN notes_fts f ON n.rowid=f.rowid "
         "WHERE notes_fts MATCH ? ORDER BY rank",
-        (query,),
+        (_fts_escape(query),),
     ).fetchall()
     return [Note.from_row(r) for r in rows]
 
