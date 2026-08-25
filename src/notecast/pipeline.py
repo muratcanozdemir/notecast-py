@@ -11,7 +11,6 @@ from typing import Any
 from notecast import db
 from notecast.llm import Ollama, OllamaError
 
-
 # ── vector math (stdlib only) ──────────────────────────────────────
 
 def cosine_sim(a: list[float], b: list[float]) -> float:
@@ -279,17 +278,15 @@ def consolidate_themes(conn: sqlite3.Connection, *,
             overlap = len(my_notes & other_notes) / len(my_notes)
             if overlap >= cooccurrence_threshold:
                 edge = (t.id, other.id)
-                if edge not in existing_edges:
-                    # verify no cycle
-                    if not _would_cycle(conn, child=t.id, parent=other.id):
-                        conn.execute(
-                            "INSERT OR IGNORE INTO theme_edges(child_id, parent_id) "
-                            "VALUES (?,?)", edge,
-                        )
-                        existing_edges.add(edge)
-                        edges_added += 1
-                        if verbose:
-                            print(f"  edge: {t.name} → {other.name}", file=sys.stderr)
+                if edge not in existing_edges and not _would_cycle(conn, child=t.id, parent=other.id):
+                    conn.execute(
+                        "INSERT OR IGNORE INTO theme_edges(child_id, parent_id) "
+                        "VALUES (?,?)", edge,
+                    )
+                    existing_edges.add(edge)
+                    edges_added += 1
+                    if verbose:
+                        print(f"  edge: {t.name} → {other.name}", file=sys.stderr)
 
     # prune empty non-base themes
     for t in themes:
@@ -321,8 +318,7 @@ def _would_cycle(conn: sqlite3.Connection, child: str, parent: str) -> bool:
         if current in visited:
             continue
         visited.add(current)
-        for pid in db.theme_parents(conn, current):
-            queue.append(pid)
+        queue.extend(db.theme_parents(conn, current))
     return False
 
 

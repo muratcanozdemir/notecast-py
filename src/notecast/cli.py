@@ -2,15 +2,15 @@
 
 from __future__ import annotations
 
-import json
-import sys
-from pathlib import Path
 import fnmatch
+import json
 import re
+from pathlib import Path
+
 import click
 
 from notecast import db
-from notecast.llm import Ollama, OllamaError
+from notecast.llm import Ollama
 
 _HEADING_RE = re.compile(r"^#\s+(.+)", re.MULTILINE)
 
@@ -73,7 +73,7 @@ def cli() -> None:
 # ── add ─────────────────────────────────────────────────────────────
 
 @cli.command()
-@click.argument("path", type=click.Path(exists=True))
+@click.argument("path", type=click.Path(exists=True, dir_okay=False))
 @click.option("--title", "-t", default=None, help="Override title (default: auto-detect from heading).")
 @click.option("--process", "-p", is_flag=True, help="Immediately process after adding.")
 def add(path: str, title: str | None, process: bool) -> None:
@@ -103,7 +103,7 @@ def add(path: str, title: str | None, process: bool) -> None:
 @click.option("--dry-run", is_flag=True, help="Show what would be added without adding.")
 def add_batch(directory: str, ext: str, exclude: tuple[str, ...], dry_run: bool) -> None:
     """Add all matching files from a directory."""
-    exts = {e.strip() if e.startswith(".") else f".{e.strip()}" for e in ext.split(",")}
+    exts = {e if e.startswith(".") else f".{e}" for e in (part.strip() for part in ext.split(","))}
     d = Path(directory)
     conn = _conn()
     count = 0
@@ -137,17 +137,19 @@ def add_batch(directory: str, ext: str, exclude: tuple[str, ...], dry_run: bool)
 def scan(stage: str, verbose: bool) -> None:
     """Run pipeline stages."""
     from notecast.pipeline import (
-        auto_scan, classify_notes, consolidate_themes,
-        organize_themes, process_notes,
+        auto_scan,
+        classify_notes,
+        consolidate_themes,
+        organize_themes,
+        process_notes,
     )
 
     conn = _conn()
     llm = _llm(conn)
 
-    if stage != "consolidate":
-        if not llm.ping():
-            click.echo("error: cannot reach Ollama", err=True)
-            raise SystemExit(1)
+    if stage != "consolidate" and not llm.ping():
+        click.echo("error: cannot reach Ollama", err=True)
+        raise SystemExit(1)
 
     if stage == "auto":
         report = auto_scan(conn, llm, verbose=verbose)
@@ -264,6 +266,9 @@ def theme_add(name: str, base: bool, desc: str | None, parent: str | None) -> No
             click.echo(f"parent theme '{parent}' not found", err=True)
             raise SystemExit(1)
         parent_id = pt.id
+    if db.get_theme_by_name(conn, name):
+        click.echo(f"theme '{name}' already exists", err=True)
+        raise SystemExit(1)
     tid = db.add_theme(conn, name, description=desc, is_base=base, parent_id=parent_id)
     click.echo(f"created {tid}: {name}")
 
@@ -290,13 +295,23 @@ def theme_remove(name: str) -> None:
 @click.option("--format", "fmt", default="svg", type=click.Choice(["svg", "png", "pdf"]))
 def graph(output: str, fmt: str) -> None:
     """Render the theme DAG to SVG/PNG/PDF."""
+    import graphviz
+
     from notecast.graph import render_dag
     conn = _conn()
     themes = db.list_themes(conn)
     if not themes:
         click.echo("no themes to graph")
         return
-    out = render_dag(conn, output=output, fmt=fmt)
+    try:
+        out = render_dag(conn, output=output, fmt=fmt)
+    except graphviz.backend.execute.ExecutableNotFound:
+        click.echo(
+            "error: graphviz 'dot' executable not found — "
+            "install it (apt install graphviz / brew install graphviz)",
+            err=True,
+        )
+        raise SystemExit(1)
     click.echo(f"written: {out}")
 
 
