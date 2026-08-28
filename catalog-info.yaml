@@ -1,0 +1,13 @@
+apiVersion: backstage.io/v1alpha1
+kind: Component
+metadata:
+  name: notecast-py
+  description: Local, offline note-taking engine that uses an LLM via Ollama to summarize notes, extract keywords, and build/evolve a knowledge graph from a personal note collection.
+  tags: [python, cli, llm, ollama, knowledge-graph]
+  annotations:
+    github.com/project-slug: muratcanozdemir/notecast-py
+    backstage.io/techdocs-ref: dir:.
+spec:
+  type: tool
+  owner: user:default/muratcanozdemir
+  lifecycle: experimental
